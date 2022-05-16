@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -19,8 +20,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-
-	"time"
 )
 
 var (
@@ -133,7 +132,7 @@ func setDestinationRuleCb(client dynamic.Interface, drName string, newCnt uint32
 func executeCanary(dynamicClient dynamic.Interface) {
 	log.Print("start canary")
 	//setVirtualServiceWeights(dynamicClient, virtualServiceName, weight1, weight2)
-	fetchFromPrometheus()
+	fetchFromPrometheus(dynamicClient)
 	log.Print("finish canary")
 }
 
@@ -143,118 +142,130 @@ func executeCanary(dynamicClient dynamic.Interface) {
 // https://qiita.com/chidakiyo/items/ac25449d49116ea189d0
 type Resp struct {
 	Status string `json:"status"`
-	Data   []struct {
-		Name                                 string `json:"__name__"`
-		App                                  string `json:"app"`
-		Chart                                string `json:"chart"`
-		ConnectionSecurityPolicy             string `json:"connection_security_policy"`
-		DestinationApp                       string `json:"destination_app"`
-		DestinationCanonicalRevision         string `json:"destination_canonical_revision"`
-		DestinationCanonicalService          string `json:"destination_canonical_service"`
-		DestinationCluster                   string `json:"destination_cluster"`
-		DestinationPrincipal                 string `json:"destination_principal"`
-		DestinationService                   string `json:"destination_service"`
-		DestinationServiceName               string `json:"destination_service_name"`
-		DestinationServiceNamespace          string `json:"destination_service_namespace"`
-		DestinationVersion                   string `json:"destination_version"`
-		DestinationWorkload                  string `json:"destination_workload"`
-		DestinationWorkloadNamespace         string `json:"destination_workload_namespace"`
-		Heritage                             string `json:"heritage"`
-		InstallOperatorIstioIoOwningResource string `json:"install_operator_istio_io_owning_resource"`
-		Instance                             string `json:"instance"`
-		Istio                                string `json:"istio"`
-		IstioIoRev                           string `json:"istio_io_rev"`
-		Job                                  string `json:"job"`
-		KubernetesNamespace                  string `json:"kubernetes_namespace"`
-		KubernetesPodName                    string `json:"kubernetes_pod_name"`
-		OperatorIstioIoComponent             string `json:"operator_istio_io_component"`
-		PodTemplateHash                      string `json:"pod_template_hash"`
-		Release                              string `json:"release"`
-		Reporter                             string `json:"reporter"`
-		RequestProtocol                      string `json:"request_protocol"`
-		ResponseCode                         uint32 `json:"response_code,string"`
-		ResponseFlags                        string `json:"response_flags"`
-		ServiceIstioIoCanonicalName          string `json:"service_istio_io_canonical_name"`
-		ServiceIstioIoCanonicalRevision      string `json:"service_istio_io_canonical_revision"`
-		SidecarIstioIoInject                 string `json:"sidecar_istio_io_inject"`
-		SourceApp                            string `json:"source_app"`
-		SourceCanonicalRevision              string `json:"source_canonical_revision"`
-		SourceCanonicalService               string `json:"source_canonical_service"`
-		SourceCluster                        string `json:"source_cluster"`
-		SourcePrincipal                      string `json:"source_principal"`
-		SourceVersion                        string `json:"source_version"`
-		SourceWorkload                       string `json:"source_workload"`
-		SourceWorkloadNamespace              string `json:"source_workload_namespace"`
+	Data   struct {
+		ResultType string `json:"resultType"`
+		Result     []struct {
+			Metric struct {
+				Name                                 string `json:"__name__"`
+				App                                  string `json:"app"`
+				Chart                                string `json:"chart"`
+				ConnectionSecurityPolicy             string `json:"connection_security_policy"`
+				DestinationApp                       string `json:"destination_app"`
+				DestinationCanonicalRevision         string `json:"destination_canonical_revision"`
+				DestinationCanonicalService          string `json:"destination_canonical_service"`
+				DestinationCluster                   string `json:"destination_cluster"`
+				DestinationPrincipal                 string `json:"destination_principal"`
+				DestinationService                   string `json:"destination_service"`
+				DestinationServiceName               string `json:"destination_service_name"`
+				DestinationServiceNamespace          string `json:"destination_service_namespace"`
+				DestinationVersion                   string `json:"destination_version"`
+				DestinationWorkload                  string `json:"destination_workload"`
+				DestinationWorkloadNamespace         string `json:"destination_workload_namespace"`
+				Heritage                             string `json:"heritage"`
+				InstallOperatorIstioIoOwningResource string `json:"install_operator_istio_io_owning_resource"`
+				Instance                             string `json:"instance"`
+				Istio                                string `json:"istio"`
+				IstioIoRev                           string `json:"istio_io_rev"`
+				Job                                  string `json:"job"`
+				KubernetesNamespace                  string `json:"kubernetes_namespace"`
+				KubernetesPodName                    string `json:"kubernetes_pod_name"`
+				OperatorIstioIoComponent             string `json:"operator_istio_io_component"`
+				PodTemplateHash                      string `json:"pod_template_hash"`
+				Release                              string `json:"release"`
+				Reporter                             string `json:"reporter"`
+				RequestProtocol                      string `json:"request_protocol"`
+				ResponseCode                         uint32 `json:"response_code,string"`
+				ResponseFlags                        string `json:"response_flags"`
+				ServiceIstioIoCanonicalName          string `json:"service_istio_io_canonical_name"`
+				ServiceIstioIoCanonicalRevision      string `json:"service_istio_io_canonical_revision"`
+				SidecarIstioIoInject                 string `json:"sidecar_istio_io_inject"`
+				SourceApp                            string `json:"source_app"`
+				SourceCanonicalRevision              string `json:"source_canonical_revision"`
+				SourceCanonicalService               string `json:"source_canonical_service"`
+				SourceCluster                        string `json:"source_cluster"`
+				SourcePrincipal                      string `json:"source_principal"`
+				SourceVersion                        string `json:"source_version"`
+				SourceWorkload                       string `json:"source_workload"`
+				SourceWorkloadNamespace              string `json:"source_workload_namespace"`
+			} `json:"metric"`
+			Value []interface{} `json:"value"`
+		} `json:"result"`
 	} `json:"data"`
 }
 
 // kubectl -n istio-system port-forward --address 0.0.0.0 $(kubectl -n istio-system get pod -l app=prometheus -o jsonpath='{.items[0].metadata.name}') 9090:9090
-func fetchFromPrometheus() {
+func fetchFromPrometheus(dynamicClient dynamic.Interface) {
 	//base, _ := url.Parse(`http://34.146.130.74:9090`)
 	//reference, _ := url.Parse(`/api/v1/series?match[]=istio_requests_total{destination_service="reviews.istio-test.svc.cluster.local", destination_version="v2"}`)
 	// reference, _ := url.Parse(`/api/v1/label/job/values`)
 	//endpoint := base.ResolveReference(reference).String()
-	req, _ := http.NewRequest("GET", `http://34.146.130.74:9090/api/v1/series?match[]=istio_requests_total{destination_service=%22reviews.istio-test.svc.cluster.local%22,%20destination_version=%22v2%22}`, nil)
-
+	// copied from brower
+	//var svcname = "reviews"
+	//var ns = "isito-test"
+	//var version = "v2"
+	req, _ := http.NewRequest("GET", `http://34.146.130.74:9090/api/v1/query?query=istio_requests_total%7Bdestination_service=%22reviews.istio-test.svc.cluster.local%22,%20destination_version=%22v2%22%7D`, nil)
+	//req, _ := http.NewRequest("GET", `http://34.146.130.74:9090/api/v1/query?query=istio_requests_total%7Bdestination_service=%22`+svcname+`.`+ns+`.svc.cluster.local%22,%20destination_version=%22`+version+`%22%7D`, nil)
 	//req, _ := http.NewRequest("GET", url.QueryEscape(`http://34.146.130.74:9090/api/v1/series?match[]=istio_requests_total{destination_service=reviews.istio-test.svc.cluster.local,destination_version=v2}`), nil)
 	var client *http.Client = &http.Client{}
-
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer resp.Body.Close()
-
 	body, _ := ioutil.ReadAll(resp.Body)
-
 	var newResp Resp
 	// json.Unmarshalはjsonを構造体に変換します。
 	if err := json.Unmarshal(body, &newResp); err != nil {
 		fmt.Println(err)
 		return
 	}
-
-	//fmt.Println(string(body))
+	fmt.Println(string(body))
 	fmt.Println("--------------------------------")
-
-	for _, v := range newResp.Data {
-
-		if v.ResponseCode >= 200 && v.ResponseCode < 500 {
-			//fmt.Println(i, v.ResponseCode)
-			fmt.Printf("Success Code: %+v\n", v.ResponseCode)
-		} else {
-			fmt.Printf("Error Code: %+v\n", v.ResponseCode)
-		}
-		//fmt.Printf("%+v\n", string((newResp.Data[i].ResponseCode)))
+	for i, _ := range newResp.Data.Result {
+		fmt.Printf("responseCode: %+v, value[1]: %+v\n", newResp.Data.Result[i].Metric.ResponseCode, newResp.Data.Result[i].Value[1])
 	}
 
 	limit := 5000 * time.Millisecond // loop 5 times
 	begin := time.Now()
+	var i = 0
 	for now := range time.Tick(1000 * time.Millisecond) { // every 1000ms
 		fmt.Println("Tick!!")
-		req, _ := http.NewRequest("GET", `http://34.146.130.74:9090/api/v1/series?match[]=istio_requests_total{destination_service=%22reviews.istio-test.svc.cluster.local%22,%20destination_version=%22v2%22}`, nil)
-
+		req, _ := http.NewRequest("GET", `http://34.146.130.74:9090/api/v1/query?query=istio_requests_total%7Bdestination_service=%22reviews.istio-test.svc.cluster.local%22,%20destination_version=%22v2%22%7D`, nil)
 		//req, _ := http.NewRequest("GET", url.QueryEscape(`http://34.146.130.74:9090/api/v1/series?match[]=istio_requests_total{destination_service=reviews.istio-test.svc.cluster.local,destination_version=v2}`), nil)
 		var client *http.Client = &http.Client{}
-
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer resp.Body.Close()
-
 		body, _ := ioutil.ReadAll(resp.Body)
-
 		var newResp Resp
 		// json.Unmarshalはjsonを構造体に変換します。
 		if err := json.Unmarshal(body, &newResp); err != nil {
 			fmt.Println(err)
 			return
 		}
-
-		//fmt.Println(string(body))
 		fmt.Println("--------------------------------")
+		for i, _ := range newResp.Data.Result {
+			fmt.Printf("responseCode: %+v, value[1]: %+v\n", newResp.Data.Result[i].Metric.ResponseCode, newResp.Data.Result[i].Value[1])
+		}
 
+		var weight1 [3]uint32 = [3]uint32{20, 70, 90}
+		var weight2 [3]uint32 = [3]uint32{70, 20, 0}
+		setVirtualServiceWeights(dynamicClient, "reviews", weight1[i], weight2[i])
+
+		// time.Tickで取得した現在時間とループ開始直前の時間の差分でループを止めるか決める
+		if now.Sub(begin) >= limit {
+			break
+		}
+
+		if i == 2 {
+			break
+		}
+		i++
+	}
+
+	/*
 		for _, v := range newResp.Data {
 
 			if v.ResponseCode >= 200 && v.ResponseCode < 500 {
@@ -265,11 +276,69 @@ func fetchFromPrometheus() {
 			}
 			//fmt.Printf("%+v\n", string((newResp.Data[i].ResponseCode)))
 		}
-		// time.Tickで取得した現在時間とループ開始直前の時間の差分でループを止めるか決める
-		if now.Sub(begin) >= limit {
-			break
+
+		limit := 5000 * time.Millisecond // loop 5 times
+		begin := time.Now()
+		for now := range time.Tick(1000 * time.Millisecond) { // every 1000ms
+			fmt.Println("Tick!!")
+			req, _ := http.NewRequest("GET", `http://34.146.130.74:9090/api/v1/query?query=istio_requests_total{destination_service=%22reviews.istio-test.svc.cluster.local%22,%20destination_version=%22v2%22}`, nil)
+
+			//req, _ := http.NewRequest("GET", url.QueryEscape(`http://34.146.130.74:9090/api/v1/series?match[]=istio_requests_total{destination_service=reviews.istio-test.svc.cluster.local,destination_version=v2}`), nil)
+			var client *http.Client = &http.Client{}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer resp.Body.Close()
+
+			body, _ := ioutil.ReadAll(resp.Body)
+
+			var newResp Resp
+			// json.Unmarshalはjsonを構造体に変換します。
+			if err := json.Unmarshal(body, &newResp); err != nil {
+				fmt.Println(err)
+				return
+			}
+
+			//fmt.Println(string(body))
+			fmt.Println("--------------------------------")
+
+			//if len(newResp.Data) < 5 {
+			//	fmt.Println("too few requests")
+			//	break
+			//}
+
+
+			//var okCnt uint32 = 0
+			//var ngCnt uint32 = 0
+
+				for _, v := range newResp.Data {
+					if v.ResponseCode >= 200 && v.ResponseCode < 500 {
+						//fmt.Println(i, v.ResponseCode)
+						fmt.Printf("Success Code: %+v\n", v.ResponseCode)
+						okCnt++
+					} else {
+						fmt.Printf("Error Code: %+v\n", v.ResponseCode)
+						ngCnt++
+					}
+					//fmt.Printf("%+v\n", string((newResp.Data[i].ResponseCode)))
+				}
+
+				fmt.Println("#Success: %+v, #Fail: %+v\n", okCnt, ngCnt)
+				if ngCnt > okCnt {
+					fmt.Println("too much error shold roll back")
+				} else {
+					fmt.Println("too much error shold roll forward")
+				}
+
+				// time.Tickで取得した現在時間とループ開始直前の時間の差分でループを止めるか決める
+				if now.Sub(begin) >= limit {
+					break
+				}
+
 		}
-	}
+	*/
 
 	// Error Rate の閾値は 0.1% ( これを越えた場合 rollback する ) do fetchFromPrometheus() else rollback
 	// もし Error Rate 等がある閾値を越えてしまった場合は、自動的に"すべての"トラフィックを現在の安定版 “stable” に戻し、canary を停止します (= rollback) 。
