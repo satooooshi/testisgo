@@ -90,7 +90,8 @@ func setDestinationRuleLb(client dynamic.Interface, drName string, newLb string)
 	patchBytes, _ := json.Marshal(patchPayload)
 
 	//  Apply the patch to the 'service2' service.
-	dr, err := client.Resource(drGVR).Namespace("istio-test").Patch(context.TODO(), drName, types.JSONPatchType, patchBytes, metav1.PatchOptions{})
+	dr, err := client.Resource(drGVR).Namespace("istio-test").Patch(context.TODO(),
+		drName, types.JSONPatchType, patchBytes, metav1.PatchOptions{})
 	log.Print(dr)
 	if err != nil {
 		log.Print(err)
@@ -231,7 +232,7 @@ func fetchFromPrometheus(dynamicClient dynamic.Interface) {
 	for now := range time.Tick(1000 * time.Millisecond) { // every 1000ms
 		fmt.Println("Tick!!")
 		req, _ := http.NewRequest("GET", `http://34.146.130.74:9090/api/v1/query?query=istio_requests_total%7Bdestination_service=%22reviews.istio-test.svc.cluster.local%22,%20destination_version=%22v2%22%7D`, nil)
-		//req, _ := http.NewRequest("GET", url.QueryEscape(`http://34.146.130.74:9090/api/v1/series?match[]=istio_requests_total{destination_service=reviews.istio-test.svc.cluster.local,destination_version=v2}`), nil)
+		//req, _ := http.NewRequest("GET", url.QueryEscape(`http://34.146.130.74:9090/api/v1/query?query=istio_requests_total{destination_service="reviews.istio-test.svc.cluster.local",destination_version="v2"}`), nil)
 		var client *http.Client = &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
@@ -265,81 +266,6 @@ func fetchFromPrometheus(dynamicClient dynamic.Interface) {
 		i++
 	}
 
-	/*
-		for _, v := range newResp.Data {
-
-			if v.ResponseCode >= 200 && v.ResponseCode < 500 {
-				//fmt.Println(i, v.ResponseCode)
-				fmt.Printf("Success Code: %+v\n", v.ResponseCode)
-			} else {
-				fmt.Printf("Error Code: %+v\n", v.ResponseCode)
-			}
-			//fmt.Printf("%+v\n", string((newResp.Data[i].ResponseCode)))
-		}
-
-		limit := 5000 * time.Millisecond // loop 5 times
-		begin := time.Now()
-		for now := range time.Tick(1000 * time.Millisecond) { // every 1000ms
-			fmt.Println("Tick!!")
-			req, _ := http.NewRequest("GET", `http://34.146.130.74:9090/api/v1/query?query=istio_requests_total{destination_service=%22reviews.istio-test.svc.cluster.local%22,%20destination_version=%22v2%22}`, nil)
-
-			//req, _ := http.NewRequest("GET", url.QueryEscape(`http://34.146.130.74:9090/api/v1/series?match[]=istio_requests_total{destination_service=reviews.istio-test.svc.cluster.local,destination_version=v2}`), nil)
-			var client *http.Client = &http.Client{}
-
-			resp, err := client.Do(req)
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer resp.Body.Close()
-
-			body, _ := ioutil.ReadAll(resp.Body)
-
-			var newResp Resp
-			// json.Unmarshalはjsonを構造体に変換します。
-			if err := json.Unmarshal(body, &newResp); err != nil {
-				fmt.Println(err)
-				return
-			}
-
-			//fmt.Println(string(body))
-			fmt.Println("--------------------------------")
-
-			//if len(newResp.Data) < 5 {
-			//	fmt.Println("too few requests")
-			//	break
-			//}
-
-
-			//var okCnt uint32 = 0
-			//var ngCnt uint32 = 0
-
-				for _, v := range newResp.Data {
-					if v.ResponseCode >= 200 && v.ResponseCode < 500 {
-						//fmt.Println(i, v.ResponseCode)
-						fmt.Printf("Success Code: %+v\n", v.ResponseCode)
-						okCnt++
-					} else {
-						fmt.Printf("Error Code: %+v\n", v.ResponseCode)
-						ngCnt++
-					}
-					//fmt.Printf("%+v\n", string((newResp.Data[i].ResponseCode)))
-				}
-
-				fmt.Println("#Success: %+v, #Fail: %+v\n", okCnt, ngCnt)
-				if ngCnt > okCnt {
-					fmt.Println("too much error shold roll back")
-				} else {
-					fmt.Println("too much error shold roll forward")
-				}
-
-				// time.Tickで取得した現在時間とループ開始直前の時間の差分でループを止めるか決める
-				if now.Sub(begin) >= limit {
-					break
-				}
-
-		}
-	*/
-
 	// Error Rate の閾値は 0.1% ( これを越えた場合 rollback する ) do fetchFromPrometheus() else rollback
 	// もし Error Rate 等がある閾値を越えてしまった場合は、自動的に"すべての"トラフィックを現在の安定版 “stable” に戻し、canary を停止します (= rollback) 。
 	// manually for i /api/catalog/hello 50 times
@@ -369,5 +295,51 @@ func main() {
 	//setDestinationRuleLb(dynamicClient, "catalog", "ROUND_ROBIN") //LEAST_CONN RANDOM ROUND_ROBIN
 	// setDestinationRuleCb(dynamicClient, "catalog", 3)
 
-	executeCanary(dynamicClient)
+	//executeCanary(dynamicClient)
+	// export KUBECONFIG='/root/.kube/config' && export NAMESPACE='default' && go run k8s-patch-virtualservice.go
+	listIngress(dynamicClient)
+}
+
+func listIngress(client dynamic.Interface) error {
+	//  Create a GVR which represents an Istio Virtual Service.
+	gvr := schema.GroupVersionResource{
+		Group:    "networking.k8s.io",
+		Version:  "v1",
+		Resource: "ingress",
+	}
+
+	//  Apply the patch to the 'service2' service.
+	res, err := client.Resource(gvr).Namespace("default").List(context.TODO(), metav1.ListOptions{})
+	log.Print(res)
+	if err != nil {
+		log.Print(err)
+	}
+	return err
+}
+
+func addRouteToVs(client dynamic.Interface, ns string, virtualServiceName string, host string, port uint32) error {
+	//  Create a GVR which represents an Istio Virtual Service.
+	gvr := schema.GroupVersionResource{
+		Group:    "networking.istio.io",
+		Version:  "v1alpha3",
+		Resource: "virtualservices",
+	}
+
+	//  Weight the two routes - 50/50.
+	patchPayload := make([]patchUInt32Value, 2)
+	patchPayload[0].Op = "replace"
+	patchPayload[0].Path = "/spec/http/0/route/0/weight"
+	patchPayload[0].Value = weight1
+	patchPayload[1].Op = "replace"
+	patchPayload[1].Path = "/spec/http/0/route/1/weight"
+	patchPayload[1].Value = weight2
+	patchBytes, _ := json.Marshal(patchPayload)
+
+	//  Apply the patch to the 'service2' service.
+	vs, err := client.Resource(gvr).Namespace(ns).Patch(context.TODO(), virtualServiceName, types.JSONPatchType, patchBytes, metav1.PatchOptions{})
+	log.Print(vs)
+	if err != nil {
+		log.Print(err)
+	}
+	return err
 }
